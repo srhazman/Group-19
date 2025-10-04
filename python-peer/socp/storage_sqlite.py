@@ -12,15 +12,20 @@ class Store:
             self.con.executescript(f.read())
         self.con.commit()
 
-    def upsert_peer(self, fid, addr, nick=None, capabilities=None):
+    def upsert_peer(self, fid, addr, nick=None, pubkey=None, capabilities=None):
         caps = json.dumps(capabilities) if capabilities is not None else None
         self.con.execute("""
-        INSERT INTO peers(fid,addr,nick,capabilities,last_seen)
-        VALUES(?,?,?,?,CURRENT_TIMESTAMP)
-        ON CONFLICT(fid) DO UPDATE SET addr=excluded.addr, nick=excluded.nick,
+        INSERT INTO peers(fid,addr,nick,pubkey,capabilities,last_seen)
+        VALUES(?,?,?,?,?,CURRENT_TIMESTAMP)
+        ON CONFLICT(fid) DO UPDATE SET addr=excluded.addr, nick=excluded.nick, pubkey=COALESCE(excluded.pubkey, peers.pubkey),
             capabilities=excluded.capabilities, last_seen=CURRENT_TIMESTAMP
-        """, (fid, addr, nick, caps))
+        """, (fid, addr, nick, pubkey, caps))
         self.con.commit()
+
+    def get_peer_pubkey(self, fid):
+        cur = self.con.execute("SELECT pubkey FROM peers WHERE fid = ?", (fid,))
+        row = cur.fetchone()
+        return row["pubkey"] if row else None
 
     def add_message(self, msg_id, from_fid, to_addr, typ, envelope_json):
         try:
