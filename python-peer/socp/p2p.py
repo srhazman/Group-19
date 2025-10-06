@@ -1,9 +1,9 @@
-import asyncio, websockets, json, time, logging
+import asyncio, websockets, json, time, logging, uuid, os, hashlib
 from .proto import new_envelope, compact_json
 from .crypto import (
     load_or_create_key, pubkey_fingerprint_and_b64,
     sign_pss_b64, verify_pss_b64,
-    rsa_encrypt_b64, rsa_decrypt_b64
+    rsa_encrypt_b64, rsa_decrypt_b64, content_sig_b64
 )
 logger = logging.getLogger(__name__)
 
@@ -14,6 +14,7 @@ class PeerNode:
         self.addr = f"ws://{cfg.bind_host}:{cfg.bind_port}"
         self.neighbours = set()
         self.seen = set()
+        self.seen_ids = set()
         # crypto: load/create RSA key and stable fid + base64 pubkey
         self.sk = load_or_create_key() # cryptography private key object
         self.fid, self.my_pub_b64 = pubkey_fingerprint_and_b64(self.sk)
@@ -56,7 +57,27 @@ class PeerNode:
                     await self.on_frame(ws, line)
             finally:
                 self.neighbours.discard(ws)
+        # Heartbeat task
+        asyncio.create_task(self.heartbeat())
         return await websockets.serve(handler, self.cfg.bind_host, self.cfg.bind_port, max_size=1_000_000)
+
+    async def heartbeat(self):
+        while True:
+            await asyncio.sleep(15)
+            env = {
+                "type": "HEARTBEAT",
+                "from": self.fid,
+                "to": "*",
+                "ts": int(time.time() * 1000),
+                "payload": {},
+                "sig": sign_pss_b64(self.sk, compact_json({"payload":{}}).encode())
+            }
+            frame = compact_json(env)
+            for n in list(self.neighbours):
+                try:
+                    await n.send(frame)
+                except Exception:
+                    self.neighbours.discard(n)
 
     async def dial(self, url):
         ws = await websockets.connect(url, open_timeout=5)
@@ -77,13 +98,10 @@ class PeerNode:
         except Exception:
             return
 
-        # require msg_id
         msg_id = env.get("msg_id")
         if not msg_id:
-            return
-
-        # replay suppression
-        if msg_id in self.seen:
+            msg_id = env.get("ts")  # fallback for MSG_PUBLIC_CHANNEL etc.
+        if not msg_id or msg_id in self.seen:
             return
         self.seen.add(msg_id)
 
@@ -153,7 +171,17 @@ class PeerNode:
                 # plaintext chat (public group or plaintext pm)
                 prefix = "[public]" if to and str(to).startswith("group:") else f"[pm {to}]"
                 print(f"{prefix} {env.get('from')}: {body.get('text','')}")
-
+        elif env.get("type") == "MSG_PUBLIC_CHANNEL":
+            payload = env.get("payload", {})
+            sender = env.get("from")
+            ciphertext = payload.get("ciphertext")
+            sender_pub = payload.get("sender_pub")
+            try:
+                # Decrypt using our own key if possible, else print raw
+                pt = rsa_decrypt_b64(self.sk, ciphertext)
+                print(f"[public] {sender}: {pt.decode(errors='ignore')}")
+            except Exception:
+                print(f"[public] {sender}: <unable to decrypt>")
         # Forward / gossip to neighbours (decrement TTL)
         try:
             ttl = int(env.get("ttl", 0)) - 1
@@ -202,6 +230,92 @@ class PeerNode:
         self._sign_env(env)
         # send to all neighbours (they route)
         frame = compact_json(env)
+        for n in list(self.neighbours):
+            try:
+                await n.send(frame)
+            except Exception:
+                self.neighbours.discard(n)
+
+    async def say_public_channel(self, text):
+        env = {
+            "type": "MSG_PUBLIC_CHANNEL",
+            "from": self.fid,
+            "to": "public",
+            "ts": int(time.time() * 1000),
+            "payload": {
+                "ciphertext": rsa_encrypt_b64(self.my_pub_b64, text.encode()),
+                "sender_pub": self.my_pub_b64,
+                "content_sig": content_sig_b64(self.sk, rsa_encrypt_b64(self.my_pub_b64, text.encode()), self.fid, "public", int(time.time() * 1000))
+            }
+        }
+        self._sign_env(env)  # <-- Ensure envelope is signed!
+        frame = compact_json(env)
+        for n in list(self.neighbours):
+            try:
+                await n.send(frame)
+            except Exception:
+                self.neighbours.discard(n)
+
+    async def send_file(self, to_fid, path):
+        file_id = str(uuid.uuid4())
+        size = os.path.getsize(path)
+        name = os.path.basename(path)
+        with open(path, "rb") as f:
+            data = f.read()
+        sha256 = hashlib.sha256(data).hexdigest()
+        manifest = {
+            "type": "FILE_START",
+            "from": self.fid,
+            "to": to_fid,
+            "ts": int(time.time() * 1000),
+            "payload": {
+                "file_id": file_id,
+                "name": name,
+                "size": size,
+                "sha256": sha256,
+                "mode": "dm"
+            },
+            "sig": ""
+        }
+        frame = compact_json(manifest)
+        for n in list(self.neighbours):
+            try:
+                await n.send(frame)
+            except Exception:
+                self.neighbours.discard(n)
+        # Send chunks
+        chunk_size = 512
+        for i in range(0, len(data), chunk_size):
+            chunk = data[i:i+chunk_size]
+            ct = rsa_encrypt_b64(self.store.get_peer_pubkey(to_fid), chunk)
+            chunk_msg = {
+                "type": "FILE_CHUNK",
+                "from": self.fid,
+                "to": to_fid,
+                "ts": int(time.time() * 1000),
+                "payload": {
+                    "file_id": file_id,
+                    "index": i // chunk_size,
+                    "ciphertext": ct
+                },
+                "sig": ""
+            }
+            frame = compact_json(chunk_msg)
+            for n in list(self.neighbours):
+                try:
+                    await n.send(frame)
+                except Exception:
+                    self.neighbours.discard(n)
+        # End
+        end_msg = {
+            "type": "FILE_END",
+            "from": self.fid,
+            "to": to_fid,
+            "ts": int(time.time() * 1000),
+            "payload": {"file_id": file_id},
+            "sig": ""
+        }
+        frame = compact_json(end_msg)
         for n in list(self.neighbours):
             try:
                 await n.send(frame)

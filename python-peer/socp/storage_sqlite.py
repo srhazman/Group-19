@@ -42,3 +42,7 @@ class Store:
     def recent_peers(self, limit=50):
         cur = self.con.execute("SELECT fid, addr, nick, last_seen FROM peers ORDER BY last_seen DESC LIMIT ?", (limit,))
         return cur.fetchall()
+
+    def list_users(self):
+        cur = self.con.execute("SELECT fid as user_id, nick, pubkey, capabilities, last_seen FROM peers ORDER BY last_seen DESC")
+        return cur.fetchall()
