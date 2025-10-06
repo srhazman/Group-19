@@ -16,7 +16,8 @@ class PeerNode:
         self.seen = set()
         self.seen_ids = set()
         # crypto: load/create RSA key and stable fid + base64 pubkey
-        self.sk = load_or_create_key() # cryptography private key object
+        keypath = os.path.join("var", f"node_key_{self.cfg.bind_port}.pem")
+        self.sk = load_or_create_key(path=keypath)  # cryptography private key object
         self.fid, self.my_pub_b64 = pubkey_fingerprint_and_b64(self.sk)
         try:
             self.store.upsert_peer(self.fid, self.addr, nick=self.cfg.nick, pubkey=self.my_pub_b64)
@@ -64,20 +65,15 @@ class PeerNode:
     async def heartbeat(self):
         while True:
             await asyncio.sleep(15)
-            env = {
-                "type": "HEARTBEAT",
-                "from": self.fid,
-                "to": "*",
-                "ts": int(time.time() * 1000),
-                "payload": {},
-                "sig": sign_pss_b64(self.sk, compact_json({"payload":{}}).encode())
-            }
+            env = new_envelope(typ="HEARTBEAT", to="group:public", frm=self.fid, ttl=2, body={})
+            self._sign_env(env)
             frame = compact_json(env)
             for n in list(self.neighbours):
                 try:
                     await n.send(frame)
                 except Exception:
                     self.neighbours.discard(n)
+
 
     async def dial(self, url):
         ws = await websockets.connect(url, open_timeout=5)
@@ -237,24 +233,29 @@ class PeerNode:
                 self.neighbours.discard(n)
 
     async def say_public_channel(self, text):
+        # Use a stable ts (ms) for both content_sig and envelope signing
+        ts = int(time.time() * 1000)
+        ciphertext = rsa_encrypt_b64(self.my_pub_b64, text.encode())
         env = {
             "type": "MSG_PUBLIC_CHANNEL",
             "from": self.fid,
             "to": "public",
-            "ts": int(time.time() * 1000),
+            "ts": ts,
             "payload": {
-                "ciphertext": rsa_encrypt_b64(self.my_pub_b64, text.encode()),
+                "ciphertext": ciphertext,
                 "sender_pub": self.my_pub_b64,
-                "content_sig": content_sig_b64(self.sk, rsa_encrypt_b64(self.my_pub_b64, text.encode()), self.fid, "public", int(time.time() * 1000))
+                "content_sig": content_sig_b64(self.sk, ciphertext, self.fid, "public", ts)
             }
         }
-        self._sign_env(env)  # <-- Ensure envelope is signed!
+        # Sign the envelope using canonical JSON bytes (sorted keys)
+        self._sign_env(env)
         frame = compact_json(env)
         for n in list(self.neighbours):
             try:
                 await n.send(frame)
             except Exception:
                 self.neighbours.discard(n)
+
 
     async def send_file(self, to_fid, path):
         file_id = str(uuid.uuid4())

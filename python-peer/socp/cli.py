@@ -15,6 +15,14 @@ async def main():
     server = await node.serve()
     print(f"listening on ws://{cfg.bind_host}:{cfg.bind_port} as {node.fid} (nick={cfg.nick})")
 
+    # Connect to bootstrap peers if specified
+    for url in cfg.bootstrap:
+        try:
+            print(f"Connecting to bootstrap peer {url}...")
+            await node.dial(url)
+        except Exception as e:
+            print(f"Bootstrap connection to {url} failed: {e}")
+
     print("Commands: /list | /tell <user> <text> | /all <text> | /file <user> <path> | /quit")
 
     while True:

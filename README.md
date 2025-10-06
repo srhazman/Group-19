@@ -17,18 +17,18 @@ Kelly Wibowo
 ├── python-peer/
 │   └── socp/
 │       ├── __init__.py
-│       ├── cli.py                # /connect, /say, /peers, /quit
+│       ├── cli.py                
 │       ├── config.py
-│       ├── p2p.py                # ws server/client, TTL flood, replay drop
-│       ├── proto.py              # minimal JSON envelope (no crypto yet)
-│       ├── storage_sqlite.py     # SQLite persistence
-│       └── crypto/               # placeholder as of right now
+│       ├── p2p.py                
+│       ├── proto.py              
+│       ├── storage_sqlite.py     
+│       └── crypto/               
 └── node-peer/
     ├── package.json
     └── src/
-        ├── cli.js                # same commands as Python peer
-        ├── p2p.js                # ws server/client, TTL flood, replay drop
-        └── storage.js            # better-sqlite3 persistence
+        ├── cli.js               
+        ├── p2p.js                
+        └── storage.js           
 ```
 
 ## Setup & P2P Testing
@@ -97,11 +97,13 @@ python -m socp.cli --bind 127.0.0.1:8051 --nick bob --bootstrap ws://127.0.0.1:8
 ```
 # Type these commands in a peer’s terminal:
 
-/say Hello      # sends a public message to all peers
+/all Hello      # sends a public message to all peers
 
-/peers          # lists peers seen recently
+/list          # lists peers seen recently
 
-/connect ws://host:port     # connect to another peer manually
+/tell <user id> <text>   # direct message another user
+
+/file <user> <path>     # send user file
 
 /quit           # cleanly exit the peer
 ```

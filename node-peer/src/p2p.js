@@ -1,6 +1,7 @@
 const WebSocket = require('ws');
 const crypto = require('./crypto');
 const fs = require('fs');
+const compactJson = crypto.compactJson;
 
 class PeerNode {
     constructor(cfg, store) {
@@ -109,7 +110,7 @@ class PeerNode {
         let ttl = (parseInt(env.ttl) || 0) - 1;
         if (ttl <= 0) return;
         env.ttl = ttl;
-        const out = JSON.stringify(env);
+        const out = compactJson(env);
         for (const n of Array.from(this.neighbours)) {
             if (n === ws) continue;
             try { n.send(out); } catch { this.neighbours.delete(n); }
@@ -124,7 +125,7 @@ class PeerNode {
             from: this.fid,
             to: "group:public",
             ttl: 2,
-            ts: new Date().toISOString().replace(/\.\d+Z$/, "Z"),
+            ts: Date.now(),                     // <- integer ms
             body: {
                 nick: this.cfg.nick,
                 addr: this.addr,
@@ -133,7 +134,8 @@ class PeerNode {
         };
         // Sign (signature excludes ttl and sig)
         this._signEnvelope(env);
-        ws.send(JSON.stringify(env));
+        // Send canonical JSON (sorted keys, no whitespace)
+        ws.send(compactJson(env));
     }
 
     async sayPublic(text) {
@@ -144,11 +146,11 @@ class PeerNode {
             from: this.fid,
             to: "group:public",
             ttl: 6,
-            ts: new Date().toISOString().replace(/\.\d+Z$/, "Z"),
+            ts: Date.now(),           // <- integer ms
             body: { text }
         };
         this._signEnvelope(env);
-        const frame = JSON.stringify(env);
+        const frame = compactJson(env);
         for (const n of Array.from(this.neighbours)) {
             try { n.send(frame); } catch { this.neighbours.delete(n); }
         }
@@ -171,11 +173,11 @@ class PeerNode {
             from: this.fid,
             to: to_fid,
             ttl: 6,
-            ts: new Date().toISOString().replace(/\.\d+Z$/, "Z"),
+            ts: Date.now(),   // <- integer ms
             body
         };
         this._signEnvelope(env);
-        const frame = JSON.stringify(env);
+        const frame = compactJson(env);
         for (const n of Array.from(this.neighbours)) {
             try { n.send(frame); } catch { this.neighbours.delete(n); }
         }
