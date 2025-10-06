@@ -99,12 +99,31 @@ python -m socp.cli --bind 127.0.0.1:8051 --nick bob --bootstrap ws://127.0.0.1:8
 /quit           # cleanly exit the peer
 ```
 
+
 #### Example:
 ```
+# /all Example
 /all Hi everyone
 [public] fid:98a6196: Hi everyone
+
+# /list Example
 /list
- fid:4a8e4c5ae2551aea: None
+fid:4a8e4c5ae2551aea: None
+fid:128de964f28b509a: alice
+fid:e720ffa334885c7f: bob
+
+# /tell <user id> <text> Example
+Terminal A
+/tell fid:e720ffa334885c7f Hello
+Terminal B
+[pm fid:128de964f28b509a] hello
+
+# /file <user> <path> Example
+Terminal A
+/file fid:4a8e4c5aew2551aea test.txt
+Terminal B
+[file] Incoming file 'test.txt' (9 bytes) from fid:0fbc228f9dbb7706
+[file] Recieved file saved as recv_test.txt
 ```
 
 ### Inspect the Database:
