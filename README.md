@@ -1,5 +1,11 @@
 # Group-19
 
+Jonathon Sadler
+Amirah Maisarah Binti Azman
+Lara Grocke
+Humaira Arief Azali
+Kelly Wibowo
+
 ### File Structure Design:
 ```
 ├── README.md                     # plan, basics, decentralised workflow
