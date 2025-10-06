@@ -31,6 +31,17 @@ Kelly Wibowo
         └── storage.js           
 ```
 
+## Public Channel Design
+
+**Public messages are signed plaintext.**  
+- All messages sent to the public channel are readable by all peers.
+- Each message is signed by the sender, so recipients can verify authenticity and integrity.
+- This design is chosen for discoverability, scale, and easy interoperability.
+- Private messages remain encrypted with RSA.
+
+**Why?**  
+Group encryption is complex; signed plaintext meets the spec goals (integrity + authentication) reliably and is easier to interoperate with other students. It also makes the hackathon and peer review easier.
+
 ## Setup & P2P Testing
 
 ### macOS/Linux
@@ -97,13 +108,13 @@ python -m socp.cli --bind 127.0.0.1:8051 --nick bob --bootstrap ws://127.0.0.1:8
 ```
 # Type these commands in a peer’s terminal:
 
-/all Hello      # sends a public message to all peers
+/all Hello      # sends a signed plaintext message to all peers
 
-/list          # lists peers seen recently
+/list           # lists peers seen recently
 
-/tell <user id> <text>   # direct message another user
+/tell <user id> <text>   # direct message another user (encrypted)
 
-/file <user> <path>     # send user file
+/file <user> <path>      # send user a file (encrypted chunks)
 
 /quit           # cleanly exit the peer
 ```

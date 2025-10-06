@@ -54,7 +54,7 @@ async def main():
             if not node.neighbours:
                 print("No peers connected. Start another peer and connect with --bootstrap.")
                 continue
-            await node.say_public_channel(text)
+            await node.say_public(text)  # <-- changed to plaintext
         elif line.startswith("/file "):
             parts = line.split(" ",2)
             if len(parts) < 3:
