@@ -1,42 +1,25 @@
 # Group-19
 
-Jonathon Sadler
-Amirah Maisarah Binti Azman
-Lara Grocke
-Humaira Arief Azali
-Kelly Wibowo
+Members:
+- Jonathon Sadler
+- Amirah Maisarah Binti Azman
+- Lara Grocke
+- Humaira Arief Azali
+- Kelly Wibowo
 
-### File Structure Design:
-```
-├── README.md                     # plan, basics, decentralised workflow
-├── .gitignore
-├── db/
-│   └── schema.sql                # peers + messages tables (SQLite)
-├── tools/
-│   └── init_db.py                # create var/socp.db from schema.sql
-├── python-peer/
-│   └── socp/
-│       ├── __init__.py
-│       ├── cli.py                
-│       ├── config.py
-│       ├── p2p.py                
-│       ├── proto.py              
-│       ├── storage_sqlite.py     
-│       └── crypto/               
-└── node-peer/
-    ├── package.json
-    └── src/
-        ├── cli.js               
-        ├── p2p.js                
-        └── storage.js           
-```
+Our group acknowledges that we are still uncertain if our implementation meets every requirement outlined in the task, as the rubric and brief do not clearly specify some technical and structural expectations.
+
+Since it was mentioned that students are encouraged to test and communicate with one another, we would be happy to receive feedback, advice, or clarification on any elements we might be missing or could improve.
+
+If you have any feedback or questions, please reach out via email:
+a1802741@adelaide.edu.au
+
 
 ## Public Channel Design
 
 **Public messages are signed plaintext.**  
 - All messages sent to the public channel are readable by all peers.
 - Each message is signed by the sender, so recipients can verify authenticity and integrity.
-- This design is chosen for discoverability, scale, and easy interoperability.
 - Private messages remain encrypted with RSA.
 
 ## Setup & P2P Testing
@@ -118,10 +101,10 @@ python -m socp.cli --bind 127.0.0.1:8051 --nick bob --bootstrap ws://127.0.0.1:8
 
 #### Example:
 ```
-/say Hi everyone
+/all Hi everyone
 [public] fid:98a6196: Hi everyone
-/peers
- fid:98a6196   unknown    -    2025-09-03 06:47:42
+/list
+ fid:4a8e4c5ae2551aea: None
 ```
 
 ### Inspect the Database:
