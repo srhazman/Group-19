@@ -1,4 +1,4 @@
-import asyncio, sys
+import asyncio, sys, os
 from .config import parse_args
 from .storage_sqlite import Store
 from .p2p import PeerNode
@@ -15,33 +15,55 @@ async def main():
     server = await node.serve()
     print(f"listening on ws://{cfg.bind_host}:{cfg.bind_port} as {node.fid} (nick={cfg.nick})")
 
-    for url in cfg.bootstrap:
-        try:
-            await node.dial(url); print(f"connected {url}")
-        except Exception as e:
-            print(f"bootstrap dial failed {url}: {e}")
-
-    print("Commands: /connect ws://host:port | /say text | /peers | /quit")
-    loop = asyncio.get_running_loop()
-    reader = asyncio.StreamReader()
-    protocol = asyncio.StreamReaderProtocol(reader)
-    await loop.connect_read_pipe(lambda: protocol, sys.stdin)
+    print("Commands: /list | /tell <user> <text> | /all <text> | /file <user> <path> | /quit")
 
     while True:
-        line = (await reader.readline()).decode().strip()
+        line = (await asyncio.to_thread(input)).strip()
         if not line:
             continue
-        if line.startswith("/connect "):
-            url = line.split(" ",1)[1]
+        if line == "/list":
+            users = store.list_users()
+            for u in users:
+                u_dict = dict(u)
+                print(f"{u_dict['user_id']}: {u_dict.get('nick','')}")
+        elif line.startswith("/tell "):
+            parts = line.split(" ",2)
+            if len(parts) < 3:
+                print("Usage: /tell <user> <text>")
+                continue
+            to_fid, text = parts[1], parts[2]
+            # Check if user exists
+            users = [dict(u)['user_id'] for u in store.list_users()]
+            if to_fid not in users:
+                print(f"User {to_fid} not found. Use /list to see users.")
+                continue
             try:
-                await node.dial(url); print(f"connected {url}")
+                await node.say_private(to_fid, text)
             except Exception as e:
-                print(f"dial failed: {e}")
-        elif line.startswith("/say "):
-            await node.say_public(line.split(" ",1)[1])
-        elif line == "/peers":
-            for fid, addr, nick, seen in store.recent_peers():
-                print(f"{fid:>12}  {addr or '-':<22}  {nick or '-':<12}  {seen}")
+                print(f"DM failed: {e}")
+        elif line.startswith("/all "):
+            text = line.split(" ",1)[1]
+            if not node.neighbours:
+                print("No peers connected. Start another peer and connect with --bootstrap.")
+                continue
+            await node.say_public_channel(text)
+        elif line.startswith("/file "):
+            parts = line.split(" ",2)
+            if len(parts) < 3:
+                print("Usage: /file <user> <path>")
+                continue
+            to_fid, path = parts[1], parts[2]
+            users = [dict(u)['user_id'] for u in store.list_users()]
+            if to_fid not in users:
+                print(f"User {to_fid} not found. Use /list to see users.")
+                continue
+            if not os.path.isfile(path):
+                print("File not found:", path)
+                continue
+            try:
+                await node.send_file(to_fid, path)
+            except Exception as e:
+                print(f"File send failed: {e}")
         elif line == "/quit":
             break
         else:
@@ -55,3 +77,5 @@ if __name__ == "__main__":
         main_sync()
     except KeyboardInterrupt:
         pass
+    except Exception as e:
+        print(f"File send failed: {e}")
