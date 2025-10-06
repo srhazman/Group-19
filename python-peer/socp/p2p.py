@@ -15,9 +15,9 @@ class PeerNode:
         self.neighbours = set()
         self.seen = set()
         self.seen_ids = set()
-        # crypto: load/create RSA key and stable fid + base64 pubkey
+        
         keypath = os.path.join("var", f"node_key_{self.cfg.bind_port}.pem")
-        self.sk = load_or_create_key(path=keypath)  # cryptography private key object
+        self.sk = load_or_create_key(path=keypath)  
         self.fid, self.my_pub_b64 = pubkey_fingerprint_and_b64(self.sk)
         try:
             self.store.upsert_peer(self.fid, self.addr, nick=self.cfg.nick, pubkey=self.my_pub_b64)
@@ -58,7 +58,7 @@ class PeerNode:
                     await self.on_frame(ws, line)
             finally:
                 self.neighbours.discard(ws)
-        # Heartbeat task
+        
         asyncio.create_task(self.heartbeat())
         return await websockets.serve(handler, self.cfg.bind_host, self.cfg.bind_port, max_size=1_000_000)
 
@@ -96,12 +96,12 @@ class PeerNode:
 
         msg_id = env.get("msg_id")
         if not msg_id:
-            msg_id = env.get("ts")  # fallback for MSG_PUBLIC_CHANNEL etc.
+            msg_id = env.get("ts") 
         if not msg_id or msg_id in self.seen:
             return
         self.seen.add(msg_id)
 
-        # HELLO handling: accept and store peer pubkey (HELLO carries pubkey)
+        
         if env.get("type") == "HELLO":
             body = env.get("body", {}) or {}
             peer_fid = env.get("from")
@@ -112,9 +112,9 @@ class PeerNode:
                 self.store.upsert_peer(peer_fid, peer_addr, nick=peer_nick, pubkey=peer_pub)
             except Exception:
                 logger.exception("upsert_peer failed for %s", peer_fid)
-            # accept HELLO even if sig can't be verified (HELLO supplies pubkey)
+            
         else:
-            # Non-HELLO: require signature and known pubkey
+            
             sig = env.get("sig")
             if not sig:
                 logger.warning("Dropping unsigned non-HELLO from %s", env.get("from"))
@@ -127,7 +127,7 @@ class PeerNode:
                 return
 
             try:
-                # canonical JSON excludes sig and ttl for verification
+                
                 canon = compact_json({k: v for k, v in env.items() if k not in ("sig", "ttl")}).encode()
                 if not verify_pss_b64(sender_pub, sig, canon):
                     logger.warning("Invalid signature from %s; dropping", sender)
@@ -136,26 +136,26 @@ class PeerNode:
                 logger.exception("Signature verification error for %s", sender)
                 return
 
-        # bookkeeping: ensure peer row exists
+        
         try:
             self.store.upsert_peer(env.get("from", "unknown"), "unknown", nick=None, capabilities=None)
         except Exception:
             logger.exception("upsert_peer failed for persist")
 
-        # persist raw message
+        
         try:
             self.store.add_message(msg_id, env.get("from"), env.get("to"), env.get("type"), line)
         except Exception:
             logger.exception("add_message failed")
 
-        # Handle CHAT messages (plaintext or encrypted)
+        
         if env.get("type") == "CHAT":
             to = env.get("to")
             body = env.get("body", {}) or {}
 
-            # Encrypted private chat (RSA-OAEP)
+            
             if body.get("enc") == "RSA-OAEP-SHA256" and "cipher" in body:
-                # decrypt only if it's for us
+                
                 if to == self.fid:
                     try:
                         pt = rsa_decrypt_b64(self.sk, body["cipher"])
@@ -164,7 +164,7 @@ class PeerNode:
                     except Exception:
                         logger.exception("Failed to decrypt private chat from %s", env.get("from"))
             else:
-                # plaintext chat (public group or plaintext pm)
+                
                 prefix = "[public]" if to and str(to).startswith("group:") else f"[pm {to}]"
                 print(f"{prefix} {env.get('from')}: {body.get('text','')}")
         elif env.get("type") == "MSG_PUBLIC_CHANNEL":
@@ -173,12 +173,12 @@ class PeerNode:
             ciphertext = payload.get("ciphertext")
             sender_pub = payload.get("sender_pub")
             try:
-                # Decrypt using our own key if possible, else print raw
+                
                 pt = rsa_decrypt_b64(self.sk, ciphertext)
                 print(f"[public] {sender}: {pt.decode(errors='ignore')}")
             except Exception:
                 print(f"[public] {sender}: <unable to decrypt>")
-        # --- File transfer handling ---
+        
         if env.get("type") == "FILE_START":
             payload = env.get("payload", {})
             file_id = payload.get("file_id")
@@ -187,7 +187,7 @@ class PeerNode:
             sha256 = payload.get("sha256")
             if env.get("to") == self.fid:
                 print(f"[file] Incoming file '{name}' ({size} bytes) from {env.get('from')}")
-                # Prepare buffer for chunks
+                
                 if not hasattr(self, "file_buffers"):
                     self.file_buffers = {}
                 self.file_buffers[file_id] = {"chunks": {}, "name": name, "size": size, "sha256": sha256, "from": env.get("from")}
@@ -207,10 +207,10 @@ class PeerNode:
             file_id = payload.get("file_id")
             if env.get("to") == self.fid and hasattr(self, "file_buffers") and file_id in self.file_buffers:
                 buf = self.file_buffers[file_id]
-                # Reassemble file
+                
                 chunks = [buf["chunks"][i] for i in sorted(buf["chunks"])]
                 data = b"".join(chunks)
-                # Verify hash
+            
                 sha256 = hashlib.sha256(data).hexdigest()
                 if sha256 != buf["sha256"]:
                     print(f"[file] Hash mismatch for '{buf['name']}' from {buf['from']}")
@@ -221,7 +221,7 @@ class PeerNode:
                     print(f"[file] Received file saved as {out_path}")
                 del self.file_buffers[file_id]
 
-        # Forward / gossip to neighbours (decrement TTL)
+        
         try:
             ttl = int(env.get("ttl", 0)) - 1
         except Exception:
@@ -242,7 +242,7 @@ class PeerNode:
     async def send_hello(self, ws):
         env = new_envelope(typ="HELLO", to="group:public", frm=self.fid, ttl=2,
                            body={"nick": self.cfg.nick, "addr": self.addr, "pubkey": self.my_pub_b64})
-        # sign (signature excludes ttl and sig)
+        
         self._sign_env(env)
         await ws.send(compact_json(env))
 
@@ -277,14 +277,14 @@ class PeerNode:
                 "mode": "dm"
             }
         }
-        self._sign_env(manifest)  # <-- sign manifest
+        self._sign_env(manifest)  
         frame = compact_json(manifest)
         for n in list(self.neighbours):
             try:
                 await n.send(frame)
             except Exception:
                 self.neighbours.discard(n)
-        # Send chunks
+        
         chunk_size = 512
         for i in range(0, len(data), chunk_size):
             chunk = data[i:i+chunk_size]
@@ -300,14 +300,14 @@ class PeerNode:
                     "ciphertext": ct
                 }
             }
-            self._sign_env(chunk_msg)  # <-- sign chunk
+            self._sign_env(chunk_msg) 
             frame = compact_json(chunk_msg)
             for n in list(self.neighbours):
                 try:
                     await n.send(frame)
                 except Exception:
                     self.neighbours.discard(n)
-        # End
+        
         end_msg = {
             "type": "FILE_END",
             "from": self.fid,
@@ -315,7 +315,7 @@ class PeerNode:
             "ts": int(time.time() * 1000),
             "payload": {"file_id": file_id}
         }
-        self._sign_env(end_msg)  # <-- sign end
+        self._sign_env(end_msg) 
         frame = compact_json(end_msg)
         for n in list(self.neighbours):
             try:
@@ -327,7 +327,7 @@ class PeerNode:
                 await n.send(frame)
             except Exception:
                 self.neighbours.discard(n)
-        # Send chunks
+    
         chunk_size = 512
         for i in range(0, len(data), chunk_size):
             chunk = data[i:i+chunk_size]
@@ -343,14 +343,14 @@ class PeerNode:
                     "ciphertext": ct
                 }
             }
-            self._sign_env(chunk_msg)  # <-- sign chunk
+            self._sign_env(chunk_msg)  
             frame = compact_json(chunk_msg)
             for n in list(self.neighbours):
                 try:
                     await n.send(frame)
                 except Exception:
                     self.neighbours.discard(n)
-        # End
+        
         end_msg = {
             "type": "FILE_END",
             "from": self.fid,
@@ -358,7 +358,7 @@ class PeerNode:
             "ts": int(time.time() * 1000),
             "payload": {"file_id": file_id}
         }
-        self._sign_env(end_msg)  # <-- sign end
+        self._sign_env(end_msg)  
         frame = compact_json(end_msg)
         for n in list(self.neighbours):
             try:
@@ -370,7 +370,7 @@ class PeerNode:
         recipient_pub = self.store.get_peer_pubkey(to_fid)
         if not recipient_pub:
             raise RuntimeError("Unknown recipient pubkey for " + str(to_fid))
-        # inner plaintext
+        
         inner = {"text": text}
         pt = compact_json(inner).encode()
         cipher_b64 = rsa_encrypt_b64(recipient_pub, pt)

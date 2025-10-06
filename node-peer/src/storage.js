@@ -36,7 +36,7 @@ class Storage {
             INSERT INTO messages(msg_id,from_fid,to_addr,type,envelope)
             VALUES(?,?,?,?,?)
         `, [msg_id, from_fid, to_addr, typ, envelope_json], err => {
-            // ignore duplicate error
+            
         });
     }
 

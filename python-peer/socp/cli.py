@@ -15,7 +15,7 @@ async def main():
     server = await node.serve()
     print(f"listening on ws://{cfg.bind_host}:{cfg.bind_port} as {node.fid} (nick={cfg.nick})")
 
-    # Connect to bootstrap peers if specified
+    
     for url in cfg.bootstrap:
         try:
             print(f"Connecting to bootstrap peer {url}...")
@@ -40,7 +40,7 @@ async def main():
                 print("Usage: /tell <user> <text>")
                 continue
             to_fid, text = parts[1], parts[2]
-            # Check if user exists
+            
             users = [dict(u)['user_id'] for u in store.list_users()]
             if to_fid not in users:
                 print(f"User {to_fid} not found. Use /list to see users.")
@@ -54,7 +54,7 @@ async def main():
             if not node.neighbours:
                 print("No peers connected. Start another peer and connect with --bootstrap.")
                 continue
-            await node.say_public(text)  # <-- changed to plaintext
+            await node.say_public(text)  
         elif line.startswith("/file "):
             parts = line.split(" ",2)
             if len(parts) < 3:

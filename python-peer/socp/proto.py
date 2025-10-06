@@ -15,7 +15,7 @@ def new_envelope(typ="CHAT", to="group:public", frm="fid:placeholder", ttl=6, bo
         "from": frm,
         "to": to,
         "ttl": ttl,
-        "ts": int(time.time() * 1000),   # integer milliseconds
+        "ts": int(time.time() * 1000),   
         "body": body or {}
     }
 

@@ -8,7 +8,7 @@ class Store:
         self.con.row_factory = sqlite3.Row
 
     def init_schema(self):
-        # read schema relative to project root; expect to run from project root
+        
         with open("db/schema.sql","r",encoding="utf-8") as f:
             self.con.executescript(f.read())
         self.con.commit()
@@ -37,7 +37,7 @@ class Store:
             self.con.commit()
             return True
         except sqlite3.IntegrityError:
-            return False  # duplicate (replay)
+            return False  
 
     def recent_peers(self, limit=50):
         cur = self.con.execute("SELECT fid, addr, nick, last_seen FROM peers ORDER BY last_seen DESC LIMIT ?", (limit,))

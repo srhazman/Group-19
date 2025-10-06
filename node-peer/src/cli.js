@@ -25,7 +25,7 @@ async function main() {
                 await node.dial(url);
                 console.log(`connected ${url}`);
             } else if (line.startsWith('/say ')) {
-                await node.sayPublic(line.split(' ', 2)[1]); // <-- now plaintext
+                await node.sayPublic(line.split(' ', 2)[1]);
             } else if (line.startsWith('/pm ')) {
                 const [, to_fid, ...msg] = line.split(' ');
                 await node.sayPrivate(to_fid, msg.join(' '));

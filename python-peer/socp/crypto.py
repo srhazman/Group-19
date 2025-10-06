@@ -69,13 +69,13 @@ def verify_pss_b64(pub_b64: str, sig_b64: str, data: bytes):
         )
         return True
     except Exception:
-        # covers InvalidSignature and malformed inputs
+        
         return False
     
 def rsa_encrypt_chunks_b64(pub_b64: str, data: bytes):
-    # key size ops: assume 4096-bit key (512 bytes)
+    
     key_bytes = 4096 // 8
-    hash_len = 32  # SHA-256
+    hash_len = 32  
     max_plain = key_bytes - 2 * hash_len - 2
     chunks = []
     for i in range(0, len(data), max_plain):

@@ -10,14 +10,14 @@ class PeerNode {
         this.addr = `ws://${cfg.bind_host}:${cfg.bind_port}`;
         this.neighbours = new Set();
         this.seen = new Set();
-        // Load or create RSA key
+        
         this.sk = crypto.loadOrCreateKey();
         this.pubkeyPem = crypto.getPublicKeyPEM(this.sk);
         this.pubkeyB64 = crypto.getPublicKeyB64(this.sk);
         this.fid = crypto.pubkeyFingerprint(this.sk);
-        // Store self in DB
+        
         this.store.upsertPeer(this.fid, this.addr, this.cfg.nick, this.pubkeyB64);
-        // Peer pubkey cache: fid -> PEM
+        
         this.peerPubkeys = {};
     }
 
@@ -30,7 +30,7 @@ class PeerNode {
         if (!env.sig) return false;
         let pubkeyPem = this.peerPubkeys[sender];
         if (!pubkeyPem) {
-            // Try to get from DB
+            
             const pubB64 = this.store.getPeerPubkey(sender);
             if (!pubB64) return false;
             pubkeyPem = Buffer.from(pubB64, 'base64').toString();
@@ -60,7 +60,7 @@ class PeerNode {
         if (!msg_id || this.seen.has(msg_id)) return;
         this.seen.add(msg_id);
 
-        // HELLO handling
+        
         if (env.type === "HELLO") {
             const body = env.body || {};
             const peer_fid = env.from;
@@ -71,24 +71,24 @@ class PeerNode {
                 this.peerPubkeys[peer_fid] = Buffer.from(peer_pub, 'base64').toString();
             }
             this.store.upsertPeer(peer_fid, peer_addr, peer_nick, peer_pub);
-            // Accept HELLO even if not signed
+            
         } else {
-            // Non-HELLO: require signature and known pubkey
+            
             if (!env.sig) return;
             if (!this._verifyEnvelopeSig(env)) return;
         }
 
-        // Bookkeeping: ensure peer row exists
+        
         this.store.upsertPeer(env.from || "unknown", "unknown", null, null);
 
-        // Persist raw message
+        
         this.store.addMessage(msg_id, env.from, env.to, env.type, line);
 
-        // Handle CHAT messages (plaintext or encrypted)
+        
         if (env.type === "CHAT") {
             const to = env.to;
             const body = env.body || {};
-            // Encrypted private chat
+            
             if (body.enc === "RSA-OAEP-SHA256" && body.cipher) {
                 if (to === this.fid) {
                     try {
@@ -100,13 +100,13 @@ class PeerNode {
                     }
                 }
             } else {
-                // Plaintext chat
+                
                 const prefix = to && String(to).startsWith("group:") ? "[public]" : `[pm ${to}]`;
                 console.log(`${prefix} ${env.from}: ${body.text || ""}`);
             }
         }
 
-        // Forward/gossip to neighbours (decrement TTL)
+        
         let ttl = (parseInt(env.ttl) || 0) - 1;
         if (ttl <= 0) return;
         env.ttl = ttl;
@@ -125,16 +125,16 @@ class PeerNode {
             from: this.fid,
             to: "group:public",
             ttl: 2,
-            ts: Date.now(),                     // <- integer ms
+            ts: Date.now(),                     
             body: {
                 nick: this.cfg.nick,
                 addr: this.addr,
                 pubkey: this.pubkeyB64
             }
         };
-        // Sign (signature excludes ttl and sig)
+        
         this._signEnvelope(env);
-        // Send canonical JSON (sorted keys, no whitespace)
+        
         ws.send(compactJson(env));
     }
 
@@ -165,7 +165,7 @@ class PeerNode {
         const name = require('path').basename(path);
         const sha256 = require('crypto').createHash('sha256').update(data).digest('hex');
         const file_id = uuid;
-        // Manifest
+        
         const manifest = {
             type: "FILE_START",
             from: this.fid,
@@ -184,7 +184,7 @@ class PeerNode {
         for (const n of Array.from(this.neighbours)) {
             try { n.send(manifestFrame); } catch { this.neighbours.delete(n); }
         }
-        // Chunks
+        
         const chunk_size = 512;
         let idx = 0;
         let pubB64 = this.store.getPeerPubkey(to_fid);
@@ -210,7 +210,7 @@ class PeerNode {
                 try { n.send(chunkFrame); } catch { this.neighbours.delete(n); }
             }
         }
-        // End
+        
         const endMsg = {
             type: "FILE_END",
             from: this.fid,

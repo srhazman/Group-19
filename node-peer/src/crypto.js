@@ -36,7 +36,7 @@ function pubkeyFingerprint(privateKey) {
     return 'fid:' + hash.slice(0, 16);
 }
 
-// Canonical JSON (sorted keys)
+
 function _sortKeysRec(obj) {
     if (obj === null) return null;
     if (Array.isArray(obj)) return obj.map(_sortKeysRec);
@@ -51,19 +51,19 @@ function _sortKeysRec(obj) {
 }
 
 function compactJson(obj) {
-    // Return JSON with stable key ordering and no spaces (like Python compact_json)
+    
     return JSON.stringify(_sortKeysRec(obj), Object.keys(_sortKeysRec(obj)));
 }
 
-// Signing / verifying
+
 function signEnvelope(privateKey, envelope) {
-    // Canonical JSON: remove 'sig' and 'ttl' before canonicalisation
+    
     const envCopy = Object.assign({}, envelope);
     delete envCopy.sig;
     delete envCopy.ttl;
     const canon = compactJson(envCopy);
     const sig = crypto.sign('sha256', Buffer.from(canon), privateKey);
-    // use urlsafe base64 (node 16+ supports base64url in buffers)
+    
     return sig.toString('base64url');
 }
 
