@@ -117,3 +117,5 @@ sqlite3 var/socp.db '.tables'
 
 sqlite3 var/socp.db 'SELECT type,from_fid,to_addr,ts FROM messages ORDER BY ts DESC LIMIT 5;'
 ```
+
+TEMP FOR CRYPTO
