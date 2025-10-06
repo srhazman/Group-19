@@ -146,7 +146,7 @@ class PeerNode {
             from: this.fid,
             to: "group:public",
             ttl: 6,
-            ts: Date.now(),           // <- integer ms
+            ts: Date.now(),
             body: { text }
         };
         this._signEnvelope(env);
@@ -156,30 +156,72 @@ class PeerNode {
         }
     }
 
-    async sayPrivate(to_fid, text) {
-        // Get recipient pubkey
+    async sendFile(to_fid, path) {
+        const fs = require('fs');
+        const cryptoMod = require('./crypto');
+        const uuid = crypto.randomUUID ? crypto.randomUUID() : require('uuid').v4();
+        const data = fs.readFileSync(path);
+        const size = data.length;
+        const name = require('path').basename(path);
+        const sha256 = require('crypto').createHash('sha256').update(data).digest('hex');
+        const file_id = uuid;
+        // Manifest
+        const manifest = {
+            type: "FILE_START",
+            from: this.fid,
+            to: to_fid,
+            ts: Date.now(),
+            payload: {
+                file_id,
+                name,
+                size,
+                sha256,
+                mode: "dm"
+            },
+            sig: ""
+        };
+        const manifestFrame = compactJson(manifest);
+        for (const n of Array.from(this.neighbours)) {
+            try { n.send(manifestFrame); } catch { this.neighbours.delete(n); }
+        }
+        // Chunks
+        const chunk_size = 512;
+        let idx = 0;
         let pubB64 = this.store.getPeerPubkey(to_fid);
         if (!pubB64) throw new Error("Unknown recipient pubkey for " + to_fid);
         const pubPem = Buffer.from(pubB64, 'base64').toString();
-        // Inner plaintext
-        const inner = { text };
-        const pt = JSON.stringify(inner);
-        const cipherB64 = crypto.encryptFor(pubPem, pt);
-        const body = { cipher: cipherB64, enc: "RSA-OAEP-SHA256" };
-        const env = {
-            v: "0.1",
-            type: "CHAT",
-            msg_id: crypto.randomUUID ? crypto.randomUUID() : require('uuid').v4(),
+        for (let i = 0; i < data.length; i += chunk_size) {
+            const chunk = data.slice(i, i + chunk_size);
+            const ct = cryptoMod.encryptFor(pubPem, chunk);
+            const chunkMsg = {
+                type: "FILE_CHUNK",
+                from: this.fid,
+                to: to_fid,
+                ts: Date.now(),
+                payload: {
+                    file_id,
+                    index: idx++,
+                    ciphertext: ct
+                },
+                sig: ""
+            };
+            const chunkFrame = compactJson(chunkMsg);
+            for (const n of Array.from(this.neighbours)) {
+                try { n.send(chunkFrame); } catch { this.neighbours.delete(n); }
+            }
+        }
+        // End
+        const endMsg = {
+            type: "FILE_END",
             from: this.fid,
             to: to_fid,
-            ttl: 6,
-            ts: Date.now(),   // <- integer ms
-            body
+            ts: Date.now(),
+            payload: { file_id },
+            sig: ""
         };
-        this._signEnvelope(env);
-        const frame = compactJson(env);
+        const endFrame = compactJson(endMsg);
         for (const n of Array.from(this.neighbours)) {
-            try { n.send(frame); } catch { this.neighbours.delete(n); }
+            try { n.send(endFrame); } catch { this.neighbours.delete(n); }
         }
     }
 

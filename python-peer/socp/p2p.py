@@ -178,6 +178,49 @@ class PeerNode:
                 print(f"[public] {sender}: {pt.decode(errors='ignore')}")
             except Exception:
                 print(f"[public] {sender}: <unable to decrypt>")
+        # --- File transfer handling ---
+        if env.get("type") == "FILE_START":
+            payload = env.get("payload", {})
+            file_id = payload.get("file_id")
+            name = payload.get("name")
+            size = payload.get("size")
+            sha256 = payload.get("sha256")
+            if env.get("to") == self.fid:
+                print(f"[file] Incoming file '{name}' ({size} bytes) from {env.get('from')}")
+                # Prepare buffer for chunks
+                if not hasattr(self, "file_buffers"):
+                    self.file_buffers = {}
+                self.file_buffers[file_id] = {"chunks": {}, "name": name, "size": size, "sha256": sha256, "from": env.get("from")}
+        elif env.get("type") == "FILE_CHUNK":
+            payload = env.get("payload", {})
+            file_id = payload.get("file_id")
+            idx = payload.get("index")
+            ct = payload.get("ciphertext")
+            if env.get("to") == self.fid and hasattr(self, "file_buffers") and file_id in self.file_buffers:
+                try:
+                    chunk = rsa_decrypt_b64(self.sk, ct)
+                    self.file_buffers[file_id]["chunks"][idx] = chunk
+                except Exception:
+                    logger.exception("Failed to decrypt file chunk")
+        elif env.get("type") == "FILE_END":
+            payload = env.get("payload", {})
+            file_id = payload.get("file_id")
+            if env.get("to") == self.fid and hasattr(self, "file_buffers") and file_id in self.file_buffers:
+                buf = self.file_buffers[file_id]
+                # Reassemble file
+                chunks = [buf["chunks"][i] for i in sorted(buf["chunks"])]
+                data = b"".join(chunks)
+                # Verify hash
+                sha256 = hashlib.sha256(data).hexdigest()
+                if sha256 != buf["sha256"]:
+                    print(f"[file] Hash mismatch for '{buf['name']}' from {buf['from']}")
+                else:
+                    out_path = f"recv_{buf['name']}"
+                    with open(out_path, "wb") as f:
+                        f.write(data)
+                    print(f"[file] Received file saved as {out_path}")
+                del self.file_buffers[file_id]
+
         # Forward / gossip to neighbours (decrement TTL)
         try:
             ttl = int(env.get("ttl", 0)) - 1
@@ -213,51 +256,8 @@ class PeerNode:
             except Exception:
                 self.neighbours.discard(n)
 
-    async def say_private(self, to_fid, text):
-        recipient_pub = self.store.get_peer_pubkey(to_fid)
-        if not recipient_pub:
-            raise RuntimeError("Unknown recipient pubkey for " + str(to_fid))
-        # inner plaintext
-        inner = {"text": text}
-        pt = compact_json(inner).encode()
-        cipher_b64 = rsa_encrypt_b64(recipient_pub, pt)
-        body = {"cipher": cipher_b64, "enc": "RSA-OAEP-SHA256"}
-        env = new_envelope(typ="CHAT", to=to_fid, frm=self.fid, ttl=6, body=body)
-        self._sign_env(env)
-        # send to all neighbours (they route)
-        frame = compact_json(env)
-        for n in list(self.neighbours):
-            try:
-                await n.send(frame)
-            except Exception:
-                self.neighbours.discard(n)
-
-    async def say_public_channel(self, text):
-        # Use a stable ts (ms) for both content_sig and envelope signing
-        ts = int(time.time() * 1000)
-        ciphertext = rsa_encrypt_b64(self.my_pub_b64, text.encode())
-        env = {
-            "type": "MSG_PUBLIC_CHANNEL",
-            "from": self.fid,
-            "to": "public",
-            "ts": ts,
-            "payload": {
-                "ciphertext": ciphertext,
-                "sender_pub": self.my_pub_b64,
-                "content_sig": content_sig_b64(self.sk, ciphertext, self.fid, "public", ts)
-            }
-        }
-        # Sign the envelope using canonical JSON bytes (sorted keys)
-        self._sign_env(env)
-        frame = compact_json(env)
-        for n in list(self.neighbours):
-            try:
-                await n.send(frame)
-            except Exception:
-                self.neighbours.discard(n)
-
-
     async def send_file(self, to_fid, path):
+        import uuid, hashlib, os
         file_id = str(uuid.uuid4())
         size = os.path.getsize(path)
         name = os.path.basename(path)
@@ -275,9 +275,9 @@ class PeerNode:
                 "size": size,
                 "sha256": sha256,
                 "mode": "dm"
-            },
-            "sig": ""
+            }
         }
+        self._sign_env(manifest)  # <-- sign manifest
         frame = compact_json(manifest)
         for n in list(self.neighbours):
             try:
@@ -298,9 +298,9 @@ class PeerNode:
                     "file_id": file_id,
                     "index": i // chunk_size,
                     "ciphertext": ct
-                },
-                "sig": ""
+                }
             }
+            self._sign_env(chunk_msg)  # <-- sign chunk
             frame = compact_json(chunk_msg)
             for n in list(self.neighbours):
                 try:
@@ -313,10 +313,71 @@ class PeerNode:
             "from": self.fid,
             "to": to_fid,
             "ts": int(time.time() * 1000),
-            "payload": {"file_id": file_id},
-            "sig": ""
+            "payload": {"file_id": file_id}
         }
+        self._sign_env(end_msg)  # <-- sign end
         frame = compact_json(end_msg)
+        for n in list(self.neighbours):
+            try:
+                await n.send(frame)
+            except Exception:
+                self.neighbours.discard(n)
+        for n in list(self.neighbours):
+            try:
+                await n.send(frame)
+            except Exception:
+                self.neighbours.discard(n)
+        # Send chunks
+        chunk_size = 512
+        for i in range(0, len(data), chunk_size):
+            chunk = data[i:i+chunk_size]
+            ct = rsa_encrypt_b64(self.store.get_peer_pubkey(to_fid), chunk)
+            chunk_msg = {
+                "type": "FILE_CHUNK",
+                "from": self.fid,
+                "to": to_fid,
+                "ts": int(time.time() * 1000),
+                "payload": {
+                    "file_id": file_id,
+                    "index": i // chunk_size,
+                    "ciphertext": ct
+                }
+            }
+            self._sign_env(chunk_msg)  # <-- sign chunk
+            frame = compact_json(chunk_msg)
+            for n in list(self.neighbours):
+                try:
+                    await n.send(frame)
+                except Exception:
+                    self.neighbours.discard(n)
+        # End
+        end_msg = {
+            "type": "FILE_END",
+            "from": self.fid,
+            "to": to_fid,
+            "ts": int(time.time() * 1000),
+            "payload": {"file_id": file_id}
+        }
+        self._sign_env(end_msg)  # <-- sign end
+        frame = compact_json(end_msg)
+        for n in list(self.neighbours):
+            try:
+                await n.send(frame)
+            except Exception:
+                self.neighbours.discard(n)
+
+    async def say_private(self, to_fid, text):
+        recipient_pub = self.store.get_peer_pubkey(to_fid)
+        if not recipient_pub:
+            raise RuntimeError("Unknown recipient pubkey for " + str(to_fid))
+        # inner plaintext
+        inner = {"text": text}
+        pt = compact_json(inner).encode()
+        cipher_b64 = rsa_encrypt_b64(recipient_pub, pt)
+        body = {"cipher": cipher_b64, "enc": "RSA-OAEP-SHA256"}
+        env = new_envelope(typ="CHAT", to=to_fid, frm=self.fid, ttl=6, body=body)
+        self._sign_env(env)
+        frame = compact_json(env)
         for n in list(self.neighbours):
             try:
                 await n.send(frame)
