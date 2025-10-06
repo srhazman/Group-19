@@ -4,6 +4,7 @@ CREATE TABLE IF NOT EXISTS peers (
     fid TEXT PRIMARY KEY,
     addr TEXT NOT NULL,
     nick TEXT,
+    pubkey TEXT,
     last_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     capabilities TEXT
 );
