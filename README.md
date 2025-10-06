@@ -39,9 +39,6 @@ Kelly Wibowo
 - This design is chosen for discoverability, scale, and easy interoperability.
 - Private messages remain encrypted with RSA.
 
-**Why?**  
-Group encryption is complex; signed plaintext meets the spec goals (integrity + authentication) reliably and is easier to interoperate with other students. It also makes the hackathon and peer review easier.
-
 ## Setup & P2P Testing
 
 ### macOS/Linux
