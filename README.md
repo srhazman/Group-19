@@ -50,7 +50,7 @@ python3 tools/init_db.py var/socp.db
 cd C:\path\to\Group-19
 
 # create and activate virtual environment
-py -m venv .venv
+python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 
 # upgrade pip and install dependencies
