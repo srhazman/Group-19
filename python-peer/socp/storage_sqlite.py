@@ -5,6 +5,7 @@ class Store:
         os.makedirs(os.path.dirname(path), exist_ok=True)
         self.con = sqlite3.connect(path, check_same_thread=False)
         self.con.execute("PRAGMA foreign_keys = ON")
+        self.con.row_factory = sqlite3.Row
 
     def init_schema(self):
         # read schema relative to project root; expect to run from project root
