@@ -1,11 +1,11 @@
 # Group-19
 
 Members:
-- Jonathon Sadler
-- Amirah Maisarah Binti Azman
-- Lara Grocke
-- Humaira Arief Azali
-- Kelly Wibowo
+- Jonathon Sadler - a1803088
+- Amirah Maisarah Binti Azman - a1880659
+- Lara Grocke - a1802741
+- Humaira Arief Azali - a1852349
+- Kelly Wibowo - a1889375
 
 Our group acknowledges that we are still uncertain if our implementation meets every requirement outlined in the task, as the rubric and brief do not clearly specify some technical and structural expectations.
 
@@ -21,6 +21,14 @@ a1802741@adelaide.edu.au
 - All messages sent to the public channel are readable by all peers.
 - Each message is signed by the sender, so recipients can verify authenticity and integrity.
 - Private messages remain encrypted with RSA.
+
+
+## Dependencies 
+- Python 3.10 or newer
+- Websockets 
+- Cryptography 
+- sqlite3 (built-in) 
+- json (built-in)
 
 ## Setup & P2P Testing
 
